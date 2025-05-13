@@ -17,62 +17,82 @@ let testDeviceListController = () => {
 }
 
 function getBrandList(request = null) {
-  var response = UrlFetchApp.fetch(
-    QUERY_URL,
-    FETCH_OPTIONS
-  )
-  if (response.getResponseCode() != 200) {
+
+  const response = getGSMApiResponse()
+
+  if (response == null) {
     if (request != null) request.status = response.getResponseCode()
     return []
   }
 
-  response = JSON.parse(response.getContentText())
-  let tempBrandList = response[0]
-  let brandList = []
-
-  for (const brand in tempBrandList) {
-    brandList.push({
-      brand_id: parseInt(brand),
-      brand_name: tempBrandList[brand],
-      key: tempBrandList[brand].toLocaleLowerCase()
-    })
-  }
-  return brandList
+  return response.brand_list
 }
 
 function getDeviceList(request = null) {
-  var response = UrlFetchApp.fetch(
-    QUERY_URL,
-    FETCH_OPTIONS
-  )
-  if (response.getResponseCode() != 200) {
+  const response = getGSMApiResponse()
+
+  if (response == null) {
     if (request != null) request.status = response.getResponseCode()
     return []
   }
 
-  response = JSON.parse(response.getContentText())
-  const tempDeviceList = response[1]
-  let tempBrandList = response[0]
-  let deviceList = []
+  return response.device_list
+}
 
-  for (const brand in tempBrandList) {
-    deviceList.push({
-      brand_id: parseInt(brand),
-      brand_name: tempBrandList[brand],
-      key: tempBrandList[brand].toLocaleLowerCase(),
-      device_list: tempDeviceList.filter((device) => {
-        return device[0] == parseInt(brand)
-      }).map((device) => {
-        return {
-          "device_id": device[1],
-          "device_name": device[2],
-          "device_type": device[3],
-          "device_image": QUERY_DEVICE_IMAGE_BASE_URL + device[4],
-          "key": `${tempBrandList[brand].toLowerCase()}_${device[2].replaceAll(` `, `_`).toLowerCase()}-${device[1]}`
-        }
-      })
-    })
+function getGSMApiResponse() {
+  var response = UrlFetchApp.fetch(
+    QUERY_URL,
+    FETCH_OPTIONS
+  )
+
+  if (response.getResponseCode() != 200) {
+    return null
   }
 
-  return deviceList
+  response = JSON.parse(response.getContentText())
+
+  let tempBrandList = response[0]
+  let tempDeviceList = response[1]
+
+  let deviceList = tempDeviceList.map(device => {
+    const brandId = device[0]
+    const deviceId = device[1]
+    const deviceName = device[2]
+    const deviceType = device[3]
+    const deviceImage = `https://fdn2.gsmarena.com/vv/bigpic/` + device[4]
+
+    return {
+      brand_id: brandId,
+      device_id: deviceId,
+      device_name: deviceName,
+      device_type: deviceType,
+      device_image: deviceImage,
+      key: `${tempBrandList[brandId].toLowerCase()}_${deviceName.replaceAll(` `, `_`).toLowerCase()}-${deviceId}`
+    }
+  })
+
+  const countByBrand = deviceList.reduce((acc, device) => {
+    const { brand_id } = device
+    if (acc[brand_id]) {
+      acc[brand_id] += 1
+    } else {
+      acc[brand_id] = 1
+    }
+
+    return acc
+  }, {})
+
+  let brandList = Object.entries(tempBrandList).map(([key, value]) => {
+    return {
+      brand_id: parseInt(key),
+      brand_name: value,
+      device_count: countByBrand[key] ?? 0,
+      key: value.toLocaleLowerCase()
+    }
+  })
+
+  return {
+    brand_list: brandList,
+    device_list: deviceList
+  }
 }
